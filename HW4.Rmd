@@ -164,6 +164,104 @@ importance(rfmodel)
 
 1. Compare the most important features from at least 2 different classes of feature selection methods covered in this tutorial with any reasonable machine learning dataset from mlbench. Do these feature selection methods provide similar results? 
 
-2. Attempt a feature selection method not covered in this tutorial (backward elimination, forward propogation, etc.)
+```{r}
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(mlbench)
+library(glmnet)
+```
 
 
+```{r load Breast Cancer dataset}
+data("BostonHousing")
+head(BostonHousing)
+dim(BostonHousing)
+summary(BostonHousing$Class)
+
+```
+
+```{r}
+#calculate correlation matrix using pearson correlation (others include spearman and kendall)
+BostonHousing_num = transform(BostonHousing, crim = as.numeric(crim),
+                              zn = as.numeric(zn),
+                              indus = as.numeric(indus),
+                              chas = as.numeric(chas),
+                              nox = as.numeric(nox),
+                              rm = as.numeric(rm),
+                              age = as.numeric(age),
+                              dis = as.numeric(dis),
+                              rad = as.numeric(rad),
+                              tax = as.numeric(tax),
+                              ptratio = as.numeric(ptratio),
+                              b = as.numeric(b),
+                              lstat = as.numeric(lstat),
+                              medv = as.numeric(medv))
+correlation_matrix = cor(BostonHousing_num[,1:14])
+
+#visualize correlation matrix
+library(corrplot)
+corrplot(correlation_matrix, order = "hclust")
+
+#apply correlation filter of 0.7
+highly_correlated <- colnames(BostonHousing[, -1])[findCorrelation(correlation_matrix, cutoff = 0.7, verbose = TRUE)]
+
+#which features are highly correlated and can be removed
+highly_correlated
+```
+Using Pearson Correlation for filter-based feature selection, the variables chas, ptratio, rm, medv, and rad are all highly correlated.
+
+```{r}
+
+BostonHousing_num[is.na(BostonHousing_num)] = 0
+
+#define the control 
+control = rfeControl(functions = caretFuncs, number = 2)
+
+# run the RFE algorithm
+results = rfe(BostonHousing_num[,1:13], BostonHousing_num[,14], sizes = c(2,5,9), rfeControl = control, method = "svmRadial")
+
+results
+results$variables
+
+```
+Using the Recursive Feature Elimination method, lstat, rm, ptratio, indus, and crim are the most highly correlated variables. Of these, only rm and ptratio are common to both this method and the Pearson correlation method.
+
+
+#2. Attempt a feature selection method not covered in this tutorial (backward elimination, forward propogation, etc.)
+```{r}
+library(Boruta)
+data(BreastCancer)
+head(BreastCancer)
+dim(BreastCancer)
+summary(BreastCancer$Class)
+
+
+```
+```{r}
+BreastCancer_num = transform(BreastCancer, Id = as.numeric(Id), 
+                         Cl.thickness = as.numeric(Cl.thickness),
+                         Cell.size = as.numeric(Cell.size),
+                         Cell.shape = as.numeric(Cell.shape), 
+                         Marg.adhesion = as.numeric(Marg.adhesion),
+                         Epith.c.size = as.numeric(Epith.c.size),
+                         Bare.nuclei = as.numeric(Bare.nuclei), 
+                         Bl.cromatin = as.numeric(Bl.cromatin), 
+                         Normal.nucleoli = as.numeric(Normal.nucleoli),
+                         Mitoses = as.numeric(Mitoses))
+
+boruta <- Boruta(Class ~ ., data=na.omit(BreastCancer_num), doTrace=0)  
+names(boruta)
+signifs <- getSelectedAttributes(boruta, withTentative = TRUE)
+roughFix <- TentativeRoughFix(boruta)
+signifs <- getSelectedAttributes(roughFix)
+print(signifs)
+imps <- attStats(roughFix)
+impsConfirmed = imps[imps$decision != 'Rejected', c('meanImp', 'decision')]
+head(impsConfirmed[order(-impsConfirmed$meanImp), ])  # descending sort
+plot(boruta, cex.axis=.7, las=2, xlab="", main="Variable Importance")  
+
+
+
+```
+Mitoses, Epith.c.size, Marg.adhesion, Normal.nucleoli, Bl.cromatin, Cl.thickness, Cell.Shape, Cell.size, and Bare.nuclei are confirmed important variables using Boruta.
